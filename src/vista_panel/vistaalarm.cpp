@@ -6,20 +6,13 @@
 #include <esp_log.h>
 #include "vistaalarm.h"
 
-#if defined(ARDUINO_MQTT)
 static const char *TAG = "vista_alarm";
 Vista vista;
 vistaECPHome *alarmPanelPtr = nullptr;
-#endif
 
-#if !defined(ARDUINO_MQTT)
-#include "esphome/components/network/util.h"
-#endif
 
-#if defined(ESP32) 
 #include <esp_chip_info.h>
 #include <esp_task_wdt.h>
-#endif
 
 #define KP_ADDR 17 // only used as a default if not set in the yaml
 #define MAX_ZONES 48
@@ -33,30 +26,11 @@ vistaECPHome *alarmPanelPtr = nullptr;
 #define TX_PIN 21
 #define MONITOR_PIN 18
 
-#if !defined(ARDUINO_MQTT)
-namespace esphome
-{
-  namespace alarm_panel
-  {
-
-    Vista vista;
-
-    static const char *const TAG = "vista_alarm";
-
-    vistaECPHome *alarmPanelPtr;
-#if defined(ESPHOME_MQTT)
-    std::function<void(const std::string &, JsonObject)> mqtt_callback;
-    const char *setalarmcommandtopic = "/alarm/set";
-#endif
-
-#endif
 
     void vistaECPHome::stop()
     {
-#if defined(ESP32) 
        if (xHandle != nullptr)
          vTaskSuspend(xHandle);
-#endif
       vista.stop();
     }
 
@@ -79,9 +53,6 @@ namespace esphome
       panicStatus = new alarmStatusType;
       alarmStatus = new alarmStatusType;
       alarmPanelPtr = this;
-#if defined(ESPHOME_MQTT)
-      mqtt_callback = on_json_message_callback;
-#endif
     }
 
 vistaECPHome::~vistaECPHome()
@@ -114,8 +85,6 @@ vistaECPHome::~vistaECPHome()
         publishZoneStatus(zt, zt->check || zt->open || zt->alarm || zt->trouble);
     }
 
-#if defined(ARDUINO_MQTT)
-
 
     void vistaECPHome::publishBinaryState(const std::string &cstr, uint8_t num, bool open)
     {
@@ -129,81 +98,6 @@ vistaECPHome::~vistaECPHome()
         textSensorCallback(cstr, num, text);
     }
 
-#else
-// void vistaECPHome::publishBinaryState(const std::string &idstr, uint8_t num, bool open)
-// {
-//   std::string id = idstr;
-//   if (num)
-//     id += "_" + std::to_string(num);
-//   auto bMap=App.get_binary_sensors();
-//   auto it = std::find_if(bMap.begin(), bMap.end(), [id](binary_sensor::BinarySensor *bs)
-//                          { return bs->get_object_id() == id; });
-//   if (it != bMap.end() && (*it)->state != open)
-//     (*it)->publish_state(open);
-// }
-
-// void vistaECPHome::publishTextState(const std::string &idstr, uint8_t num, std::string *text)
-// {
-//   std::string id = idstr;
-//   if (num)
-//     id += "_" + std::to_string(num);
-//   auto tMap=App.get_text_sensors();
-
-//   auto it = std::find_if(tMap.begin(), tMap.end(), [id](text_sensor::TextSensor *ts)
-//                          { return ts->get_object_id() == id; });
-//   if (it != tMap.end() && (*it)->state != *text)
-//     (*it)->publish_state(*text);
-      
-// }
-
-void vistaECPHome::publishBinaryState(const std::string &idstr, uint8_t num, bool open)
-{
-  std::string id = idstr;
-  if (num)
-  {
-    id += "_" + std::to_string(num);
-  }
-  auto s=getSensorObj(id.c_str());
-
-
-  if (s != nullptr && s->sensorPtr != nullptr  && s->is_binary) {
-       //printf("num=%d,id=%s,idtype=%s,open=%d\r\n",num,id.c_str(),s->id_type,open);
-    binary_sensor::BinarySensor * bs = reinterpret_cast<binary_sensor::BinarySensor*> (s->sensorPtr);
-    if (bs->state != open)
-       bs->publish_state(open);
-    //printf("after binary sensor\r\n");
-  }
-}
-
-void vistaECPHome::publishTextState(const std::string &idstr, uint8_t num, std::string *text)
-{
-  std::string id = idstr;
-  if (num)
-  {
-    id += "_" + std::to_string(num);
-  }
-  auto s=getSensorObj(id.c_str());
-  if (s != nullptr && s->sensorPtr != nullptr && !s->is_binary) {
-    text_sensor::TextSensor * ts = reinterpret_cast<text_sensor::TextSensor*>(s->sensorPtr);
-      ts->publish_state(*text);
-  }
-
-}
-
-    const char * vistaECPHome::getIdType(uint32_t hash)
-    {
-
-       if (hash == 0) return "";
-      auto it = std::find_if(extZones.begin(), extZones.end(), [hash](sensorObjType &f)
-                             { return f.hash == hash; });
-
-      if (it != extZones.end())
-        return (*it).id_type;
-      else 
-        return "";
-       
-    }
-#endif
 
     vistaECPHome::sensorObjType *vistaECPHome::getSensorObj(const char *id_type)
     {
@@ -218,143 +112,6 @@ void vistaECPHome::publishTextState(const std::string &idstr, uint8_t num, std::
 
     }
 
-
-
-
-#if !defined(ARDUINO_MQTT)
-
-    // int vistaECPHome::getZoneNumber(char *zid)
-    // {
-    //   MatchState ms;
-    //   char buf[20];
-    //   char res;
-    //   ms.Target((char *)zid);
-    //   res = ms.Match("^[zZ](%d+)$");
-    //   if (res == REGEXP_MATCHED)
-    //   {
-    //     ms.GetCapture(buf, 0);
-    //     int z = toInt(buf, 10);
-    //     sensorObjType *zt = getZone(z);
-    //     if (zt->zone != z)
-    //       return z;
-    //   }
-    //   return 0;
-    // }
-
-    // int vistaECPHome::getSensorMatch(char * oid)
-    // {
-    //   MatchState ms;
-    //   char buf[20];
-    //   char res;
-    //   ms.Target((char *)oid);
-    //   res = ms.Match("(%a+)\_*(%d*)$");
-    //   if (res == REGEXP_MATCHED)
-    //   {
-    //     ms.GetCapture(buf,1);
-    //     int p = toInt(buf, 10);
-    //     ms.GetCapture(buf, 0);
-    //     if (strcmp(buf,"ss")==0)
-    //       partitionSensors[p].ss=obj;
-    //     else if (strcmp(buf,"lrr")==0)
-    //       partitionSensors[p].lrr=obj;
-    //     else if (strcmp(buf,"rf")==0)
-    //       partitionSensors[p].rf=obj;
-    //   else if (strcmp(buf,"ln1")==0)
-    //       partitionSensors[p].lrr=obj;
-    //   }
-    //   return 0;
-    // }
-
-    // void vistaECPHome::enableModuleAddr(sensorObjType n){
-    //    if ( n.serial > 0) return; //rf emulation
-    //      uint8_t addr = 0;
-    //      uint8_t zone=n.zone;
-    //       if (zone > 8 && zone < 17)
-    //       {
-    //         addr = 7;
-    //       }
-    //       else if (zone > 16 && zone < 25)
-    //       {
-    //         addr = 8;
-    //       }
-    //       else if (zone > 24 && zone < 33)
-    //       {
-    //         addr = 9;
-    //       }
-    //       else if (zone > 32 && zone < 41)
-    //       {
-    //         addr = 10;
-    //       }
-    //       else if (zone > 40 && zone < 49)
-    //       {
-    //         addr = 11;
-    //       }
-    //       else
-    //         return;
-    //       vista.addModule(addr);
-  
-    // }
-
-    void vistaECPHome::createSensorFromObj(void *obj, uint8_t p, uint32_t serial, uint8_t loop, uint8_t type, bool emulated,const char *id_type, bool is_binary)
-    {
-
-      MatchState ms;
-      char buf[20];
-      char res;
-      int z = 0;
-      if (strcmp(id_type,"")==0 ) return;
-
-        ms.Target((char *)id_type);
-        res = ms.Match("^[zZ](%d+)$");
-        if (res == REGEXP_MATCHED)
-        {
-          ms.GetCapture(buf, 0);
-          z = toInt(buf, 10);
-        }
-
-          if (z ) {
-            sensorObjType * n = getZone(z);
-            if (n->zone == z) {
-              if (n->sensorPtr==NULL)
-                n->sensorPtr=obj;
-              if (!n->partition)
-                n->partition=p;
-              return;  //already exists
-            }
-         }
-
-      sensorObjType s = sensorObjType_INIT;
-      s.zone = z;
-      s.sensorPtr = obj;
-      s.active = true;
-      s.partition = p;
-      s.type=type;
-      s.emulated=emulated;
-      s.is_binary=is_binary;
-      s.id_type=id_type;
-        if (is_binary) 
-        {
-          s.hash = reinterpret_cast<binary_sensor::BinarySensor  *>(obj)->get_object_id_hash();
-        } else {
-          s.hash = reinterpret_cast<text_sensor::TextSensor *>(obj)->get_object_id_hash();
-        }
-      if (serial == 0 ) 
-        getRFSerial(&s);
-      else
-      {
-        s.serial = serial;
-        s.loopmask=getLoopMask(loop,type);
-      }
-      extZones.push_back(s);
-      if (!is_binary && z){
-        publishZoneStatus(&s, "C");
-      }
-      if (z)
-        ESP_LOGD(TAG, "added  zone %d, serial=%d", extZones.back().zone,s.serial);
-    }
-
-
-#else
 
     void vistaECPHome::createZone(uint16_t z, uint8_t p)
     {
@@ -374,34 +131,11 @@ void vistaECPHome::publishTextState(const std::string &idstr, uint8_t num, std::
       publishZoneStatus(&n, "C");
       publishZoneStatus(&n, false);
     }
-#endif
 
 
     void vistaECPHome::getZoneName(uint16_t zone, std::string &out,  bool append)
     {
      out = std::to_string(zone);
-#if !defined(ARDUINO_MQTT)
-
-      auto it = std::find_if(extZones.begin(), extZones.end(), [zone](sensorObjType &f)
-                             { return f.zone == zone + 1; });
-      if (it != extZones.end()) {
-                sensorObjType s = (*it);
-                if (s.sensorPtr != nullptr) {
-                  const char * name;
-                  if (s.is_binary) {
-                    name = reinterpret_cast<binary_sensor::BinarySensor *>(s.sensorPtr)->get_name().c_str();
-                  } else {
-                    name = reinterpret_cast<text_sensor::TextSensor *>(s.sensorPtr)->get_name().c_str();
-                  }
-                   if (append) {
-                    out= std::string(name).append(" (").append(std::to_string(zone)).append(")");
-                   } else {
-                    out = std::string(name);
-                   }
-                }
-      }
-      
-#endif
      
 
     }
@@ -466,61 +200,6 @@ void vistaECPHome::publishTextState(const std::string &idstr, uint8_t num, std::
       }
     }
 
-#if defined(ESPHOME_MQTT)
-    void vistaECPHome::on_json_message_callback(const std::string &topic, JsonObject payload)
-    {
-      alarmPanelPtr->on_json_message(topic, payload);
-    }
-
-    void vistaECPHome::on_json_message(const std::string &topic, JsonObject payload)
-    {
-      int p = 0;
-
-      if (topic.find(setalarmcommandtopic) != std::string::npos)
-      {
-        if (payload.containsKey("partition"))
-          p = payload["partition"];
-
-        if (payload.containsKey("addr"))
-        {
-          p = payload["addr"];
-          std::string s = payload["keys"];
-          int NumberChars = s.length();
-          char bytes[NumberChars/2];
-          for (int i = 0; i < NumberChars; i += 2)
-          {
-            bytes[i / 2] = toInt(s.substr(i, 2), 16);
-          }
-          vista.writeDirect(bytes, p, NumberChars / 2);
-          return;
-        }
-        if (payload.containsKey("state"))
-        {
-          const char *c = "";
-          if (payload.containsKey("code"))
-            c = payload["code"];
-          std::string code = c;
-          std::string s = payload["state"];
-          set_alarm_state(s, code, p);
-        }
-        else if (payload.containsKey("keys"))
-        {
-          std::string s = payload["keys"];
-          alarm_keypress_partition(s, p);
-        }
-        else if (payload.containsKey("fault") && payload.containsKey("zone"))
-        {
-          bool b = false;
-          std::string s1 = payload["fault"];
-          if (s1 == "ON" || s1 == "on" || s1 == "1")
-            b = true;
-          p = payload["zone"];
-          // ESP_LOGE(TAG,"set zone fault %s,%s,%d,%d",s2.c_str(),c,b,p);
-          set_zone_fault(p, b);
-        }
-      }
-    }
-#endif
 
     void vistaECPHome::processAuiQueue()
     {
@@ -548,109 +227,13 @@ void vistaECPHome::publishTextState(const std::string &idstr, uint8_t num, std::
       }
     }
 
-    void vistaECPHome::set_panel_time()
-    {
-#if defined(USE_TIME)
-
-      if (_auiAddr)
-      {
-        if (auiCmd.state != rsidle)
-        {
-          auiCmdType c;
-          c.state = rsdate;
-          if (auiQueue.size() < 5)
-            auiQueue.push(c);
-        }
-        else
-          sendAuiTime();
-      }
-      if (vistaCmd->statusFlags.programMode || _auiAddr)
-        return;
-      ESPTime rtc = now();
-      if (!rtc.is_valid())
-        return;
-      int hour = rtc.hour;
-      int year = rtc.year;
-      char ampm = hour < 12 ? 2 : 1;
-      if (hour > 12)
-        hour -= 12;
-      char cmd[30];
-      sprintf(cmd, "%s#63*|%02d%02d%01d%02d%02d%02d*", _accessCode, hour, rtc.minute, ampm, rtc.year % 100, rtc.month, rtc.day_of_month);
-#if not defined(ARDUINO_MQTT)
-      ESP_LOGD(TAG, "Send time string: %s", cmd);
-#endif
-      int addr = _partitionKeypads[_defaultPartition];
-      vista.write(cmd, addr);
-
-#endif
-    }
-    /*
-void vistaECPHome::set_panel_time_manual(int year, int month, int day, int hour, int minute,int seconds, int dow)
-    {
-
-      bool r=sendAuiTime(year, month, day, hour, minute, seconds,dow);
-      if (vistaCmd->statusFlags.programMode || r)
-        return;
-      char ampm = hour < 12 ? 2 : 1;
-      if (hour > 12)
-        hour -= 12;
-      char cmd[30];
-      sprintf(cmd, "%s#63*|%02d%02d%1d%02d%02d%02d*", _accessCode, hour, minute, ampm, year % 100, month, day);
-#if defined(ARDUINO_MQTT)
-      Serial.printf("Setting panel time...\n");
-#else
-  ESP_LOGD(TAG, "Send time string: %s", cmd);
-#endif
-
-      int addr = _partitionKeypads[_defaultPartition];
-      vista.write(cmd, addr);
-    }
-    */
-
-#if defined(ARDUINO_MQTT)
     void vistaECPHome::begin()
     {
-#else
-void vistaECPHome::setup()
-{
-#endif
-#ifdef ESP32
       ESP_LOGD(TAG, "Start setup: Free heap: %04X (%d)", esp_get_free_heap_size(), esp_get_free_heap_size());
-#endif
         // tg_timer_init(TIMER_GROUP_0, TIMER_0);
       //  use a pollingcomponent and change the default polling interval from 16ms to 8ms to enable
       //   the system to not miss a response window on commands.
-#if !defined(ARDUINO_MQTT)
 
-      set_update_interval(8); // set looptime to 8ms
-    //  loadZones();
-#endif
-
-#if defined(ESPHOME_MQTT)
-      _topicPrefix = mqtt::global_mqtt_client->get_topic_prefix();
-      mqtt::MQTTDiscoveryInfo mqttDiscInfo = mqtt::global_mqtt_client->get_discovery_info();
-      std::string discovery_prefix = mqttDiscInfo.prefix;
-      _topic = discovery_prefix + "/alarm_control_panel/" + _topicPrefix + "/config";
-      mqtt::global_mqtt_client->subscribe_json(_topicPrefix + setalarmcommandtopic, mqtt_callback);
-
-#endif
-#if defined(USE_API)
- #if defined(USE_API_CUSTOM_SERVICES) or defined(USE_API_SERVICES)
-      register_service(&vistaECPHome::set_panel_time, "set_panel_time", {});
-      register_service(&vistaECPHome::alarm_keypress, "alarm_keypress", {"keys"});
-      register_service(&vistaECPHome::send_cmd_bytes, "send_cmd_bytes", {"addr", "hexdata"});
-      register_service(&vistaECPHome::alarm_keypress_partition, "alarm_keypress_partition", {"keys", "partition"});
-      register_service(&vistaECPHome::alarm_disarm, "alarm_disarm", {"code", "partition"});
-      register_service(&vistaECPHome::alarm_arm_home, "alarm_arm_home", {"partition"});
-      register_service(&vistaECPHome::alarm_arm_night, "alarm_arm_night", {"partition"});
-      register_service(&vistaECPHome::alarm_arm_away, "alarm_arm_away", {"partition"});
-      register_service(&vistaECPHome::alarm_trigger_panic, "alarm_trigger_panic", {"code", "partition"});
-      register_service(&vistaECPHome::alarm_trigger_fire, "alarm_trigger_fire", {"code", "partition"});
-      register_service(&vistaECPHome::set_zone_fault, "set_zone_fault", {"zone", "fault"});
-      #else
-      #error "Missing "custom_services: true" line in the api: section"
-      #endif
-#endif
       publishSystemStatus(STATUS_ONLINE, 1);
       publishStatus(SAC, true, 1);
 
@@ -667,7 +250,6 @@ void vistaECPHome::setup()
       }
       publishLrrMsg("ESP Restart");
       publishRfMsg(" ");
-#if defined(ESP32) || defined(USE_ESP_IDF)
       esp_chip_info_t info;
       esp_chip_info(&info);
       ESP_LOGE(TAG, "Cores: %d", info.cores);
@@ -697,9 +279,6 @@ void vistaECPHome::setup()
   //     core // Core where the task should run. 
   // );
         ESP_LOGD(TAG, "Completed setup. Free heap=%04X (%d)",esp_get_free_heap_size(), esp_get_free_heap_size());
-#else
-      vista.begin(_rxPin, _txPin, _keypadAddr1, _monitorPin, _invertRx, _invertTx, _invertMon, _inputRx, _inputMon);
-#endif
 
     }
 
@@ -767,11 +346,7 @@ void vistaECPHome::setup()
 
 
       if (_debug > 0)
-#if defined(ARDUINO_MQTT)
         Serial.printf("Writing keys: %s to partition %d\n", keystring.c_str(), partition);
-#else
-    ESP_LOGD(TAG, "Writing keys: %s to partition %d", keystring.c_str(), partition);
-#endif
 
       if (keystring == "R")
       {
@@ -952,24 +527,12 @@ void vistaECPHome::setup()
 
       std::string s = "";
 
-#if !defined(ARDUINO_MQTT)
-      char s2[25];
-      ESPTime rtc = now();
-      sprintf(s2, "[%02d-%02d-%02d %02d:%02d]", rtc.year, rtc.month, rtc.day_of_month, rtc.hour, rtc.minute);
-#endif
       for (int c = 0; c < len; c++)
       {
         sprintf(s1, "%02X ", cbuf[c]);
         s = s.append(s1);
       }
-#if defined(ARDUINO_MQTT)
       Serial.printf("%s: %s\n", label, s.c_str());
-#else
-  if (strcmp(label, "CHK") == 0 || (len > 12 && cbuf[12] == 0x77))
-    ESP_LOGE(label, "%s %s", s2, s.c_str());
-  else
-    ESP_LOGI(label, "%s %s", s2, s.c_str());
-#endif
     }
 
     void vistaECPHome::set_alarm_state(std::string const &state, std::string code, int partition)
@@ -1127,25 +690,6 @@ void vistaECPHome::setup()
     }
 
 
-#if !defined(ARDUINO_MQTT)
-    bool vistaECPHome::sendAuiTime()
-    {
-      ESPTime rtc = now();
-      if (!rtc.is_valid() || vistaCmd->statusFlags.programMode || !_auiAddr || (auiCmd.state != rsidle && auiCmd.state != rsdate))
-        return false;
-      ESP_LOGD(TAG, "Setting AUI time...");
-      char bytes[] = {00, 0x68, 0x05, 0x02, 0x45, 0x43, 0xF5, 0xEC, 0x32, 0x34, 0x31, 0x31, 0x31, 0x35, 0x31, 0x31, 0x34, 0x31, 0x30, 0x35, 0x35, 0};
-      _auiSeq = _auiSeq == 0xf ? 8 : _auiSeq + 1;
-      bytes[1] = 0x60 + _auiSeq;
-      auiCmd.state = rsdate;
-      auiCmd.time = millis();
-      auiCmd.pending = true;
-      // dateReqStatus=0;
-      snprintf(&bytes[8], 14, "%02d%02d%02d%02d%02d%02d%1d", rtc.year % 100, rtc.month, rtc.day_of_month, rtc.hour, rtc.minute, rtc.second, rtc.day_of_week - 1);
-      vista.writeDirect(bytes, _auiAddr, sizeof(bytes) - 1);
-      return true;
-    }
-#else
     bool vistaECPHome::sendAuiTime()
     {
       time_t sec = time(nullptr);
@@ -1167,7 +711,6 @@ void vistaECPHome::setup()
       vista.writeDirect(bytes, _auiAddr, sizeof(bytes) - 1);
       return true;
     }
-#endif
 
     void vistaECPHome::sendZoneRequest()
     {
@@ -1184,107 +727,6 @@ void vistaECPHome::setup()
       vista.writeDirect(bytes, _auiAddr, sizeof(bytes));
     }
 
-#if defined(AUTOPOPULATE)
-
-    // void vistaECPHome::getZoneCount()
-    // {
-    //   if (!_auiAddr || !auiCmd.state == rszonecount)
-    //     return;
-    //   if (!auiCmd.partition || auiCmd.partition > (_maxPartitions + 0x30))
-    //   {
-    //     auiCmd.state = rsidle;
-    //     return;
-    //   }
-    //   auiCmd.pending = true;
-    //   char bytes[] = {0x00, 0x68, 0x62, 0x0C, 0x45, 0x49, 0xF5, 0x31, 0xFB, 0x43, 0x61};
-    //   _auiSeq = _auiSeq == 0xf ? 8 : _auiSeq + 1;
-    //   bytes[1] = 0x60 + _auiSeq;
-    //   bytes[7] = auiCmd.partition;
-    //   ESP_LOGD(TAG, "Sending partition %c zone count request %d", auiCmd.partition, auiCmd.state);
-    //   vista.writeDirect(bytes, _auiAddr, sizeof(bytes));
-    // }
-
-    // void vistaECPHome::getZoneRecord()
-    // {
-    //   if (!_auiAddr || !auiCmd.state == rszoneinfo)
-    //     return;
-    //   if (auiCmd.record > auiCmd.records || auiCmd.records == 0)
-    //   {
-    //     auiCmd.state = rsidle;
-    //     return;
-    //   }
-    //   auiCmd.pending = true;
-    //   char bytes[] = {0x00, 0x68, 0x62, 0x0C, 0x45, 0x49, 0xF5, 0x31, 0xFB, 0x45, 0x43, 0xF5, 0x30, 0x30, 0x31, 0xFB, 0x43, 0x6C, 0};
-    //   _auiSeq = _auiSeq == 0xf ? 8 : _auiSeq + 1;
-    //   bytes[1] = 0x60 + _auiSeq;
-    //   bytes[7] = auiCmd.partition;
-    //   sprintf(&bytes[12], "%03d%c%c%c", auiCmd.record, 0xfb, 0x43, 0x6c);
-    //   ESP_LOGD(TAG, "Sending partition %c zone record %d request %d,Total records: %d", auiCmd.partition, auiCmd.record, auiCmd.state, auiCmd.records);
-    //   vista.writeDirect(bytes, _auiAddr, sizeof(bytes) - 1);
-    // }
-
-    // void vistaECPHome::loadZone(int zone, std::string &&name, uint8_t sensorObjType, uint8_t devicetype)
-    // {
-
-    //   zoneNameType nz;
-    //   nz.name = name;
-    //   nz.zone = zone;
-    //   nz.zone_type = sensorObjType;
-    //   nz.device_type = devicetype;
-    //   autoZones.push_back(nz);
-
-    //   ESP_LOGD(TAG, "got name=%s,zone=%d,zt=%d,dt=%d", name.c_str(), zone, sensorObjType, devicetype);
-    // }
-
-    // // 31 00 31 00 31 00 46 52 4F 4E 54 20 44 4F 4F 52 44
-    // void vistaECPHome::processZoneInfo(char *list)
-    // {
-    //   std::string s = "";
-    //   if (list)
-    //   {
-    //     s = list;
-    //   }
-    //   s.append(",");
-    //   uint8_t x = 1;
-    //   uint8_t z, zt, dt;
-    //   std::string name = "";
-    //   size_t pos;
-    //   while ((pos = s.find(',')) != std::string::npos && x < 5)
-    //   {
-    //     std::string s1 = "";
-    //     if (x == 1)
-    //     {
-    //       s1 = s.substr(0, pos);
-    //       z = std::stoi(s1.c_str());
-    //       x = 2;
-    //     }
-    //     else if (x == 2)
-    //     {
-    //       s1 = s.substr(0, pos);
-    //       zt = std::stoi(s1.c_str());
-    //       x = 3;
-    //     }
-    //     else if (x == 3)
-    //     {
-    //       s1 = s.substr(0, pos);
-    //       dt = std::stoi(s1.c_str());
-    //       x = 4;
-    //     }
-    //     else if (x == 4)
-    //     {
-    //       s1 = s.substr(0, pos);
-    //       name = s1;
-    //       x = 5;
-    //     }
-    //     s.erase(0, pos + 1);
-    //   }
-    //   if (name == "" && z)
-    //     name = "Zone " + std::to_string(z);
-    //   if (z)
-    //     loadZone(z, name.c_str(), zt, dt);
-    // }
-
-#endif
 
     char *vistaECPHome::parseAUIMessage(char *cmd)
     {
@@ -1431,7 +873,6 @@ void vistaECPHome::setup()
       forceRefreshZones = true;
     }
 
-#if defined(ESP32) || defined(USE_ESP_IDF)
 
     // void vistaECPHome::setupTask(void *args)
     // {
@@ -1461,10 +902,6 @@ void vistaECPHome::setup()
           if (millis() - checkTime > 60000)
           {
             checkTime = millis();
-#if not defined(ARDUINO_MQTT)
-            UBaseType_t uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
-            ESP_LOGD(TAG, "High water stack level: %5d", (uint16_t)uxHighWaterMark);
-#endif
           }
           if (millis() - dataTime > 60000)
           {
@@ -1482,54 +919,18 @@ void vistaECPHome::setup()
       }
       vTaskDelete(NULL);
     }
-#endif
 
-#if defined(AUTOPOPULATE)
-    // void vistaECPHome::fetchPanelZones()
-    // {
-      
-    // //test code to auto load zones from panel - future
-    //       static uint8_t currentAUIPartition=0x30;
-    //       if (currentAUIPartition <= (_maxPartitions+0x30)) {
-    //         if (auiCmd.state==rsidle) {
-    //           auiCmd.state=szonecount;
-    //           auiCmd.pending=false;
-    //         }
-    //         if (auiCmd.state==szonecount && !auiCmd.pending) {
-    //           currentAUIPartition++;
-    //           auiCmd.partition=currentAUIPartition;
-    //           auiCmd.records=0;
-    //           auiCmd.record=0;
-    //           auiCmd.pending=false;
-    //           getZoneCount();
-    //        } else if (auiCmd.state==rszoneinfo && !auiCmd.pending) {
-    //           getZoneRecord();
-    //         }
-    //       }
-    //       }
-          
-#endif
 
-#if defined(ARDUINO_MQTT)
       void vistaECPHome::loop()
       {
-#else
-void vistaECPHome::update()
-{
-#endif
 
         static bool firstRun=false;
         static bool lastConnectState=false;
-#if defined(ARDUINO_MQTT)
         bool is_connected = true;
-#else
-        bool is_connected = network::is_connected();
-#endif
         if (is_connected && is_connected != lastConnectState) firstRun=true;
         lastConnectState=is_connected;
         
         processAuiQueue();
-#ifdef ESP32
       static unsigned long checkTime = millis();
       if (millis() - checkTime > 10000)
       {
@@ -1537,46 +938,10 @@ void vistaECPHome::update()
         UBaseType_t uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
         ESP_LOGD(TAG, "Stack high water mark: %5d", (uint16_t)uxHighWaterMark);
       }
-#endif
 
-#if defined(ESPHOME_MQTT)
-        static bool firstRunMqtt=true;
-        if (firstRunMqtt && mqtt::global_mqtt_client->is_connected())
-        {
-          mqtt::global_mqtt_client->publish(_topic, "{\"name\":\"command\", \"cmd_t\":\"" + _topicPrefix + setalarmcommandtopic + "\"}", 0, 1);
-          firstRunMqtt=false;
-        }
-#endif
 
         // if data to be sent, we ensure we process it quickly to avoid delays with the F6 cmd
 
-#if !defined(ESP32)  
-        static unsigned long dataTime = millis();
-        if (vista.handle())
-        {
-          dataTime = millis();
-          vista.connected = true;
-        } else
-
-        if (millis() - dataTime > 15000)
-        {
-          dataTime = millis();
-          ESP_LOGE(TAG, "Data timeout. Is the panel connected?");
-          vista.connected = false;
-        }
-
-        static unsigned long sendWaitTime = millis();
-        while (!firstRun && vista.connected && vista.sendPending() && vista.cmdAvail())
-        {
-          if (vista.handle())
-          {
-            dataTime = millis();
-            vista.connected = true;
-          }
-          if (millis() - sendWaitTime > 10)
-            break;
-        }
-#endif
 
         if (vista.cmdAvail())
         {
@@ -1678,11 +1043,7 @@ void vistaECPHome::update()
                 {
                   publishRelayStatus(vistaCmd->cbuf[1], z, vistaCmd->cbuf[4] ? true : false);
                   if (_debug > 0)
-#if defined(ARDUINO_MQTT)
                     Serial.printf("Got relay address %d channel %d = %d\n", vistaCmd->cbuf[1], z, vistaCmd->cbuf[4]);
-#else
-              ESP_LOGD(TAG, "Got relay address %d channel %d = %d", vistaCmd->cbuf[1], z, vistaCmd->cbuf[4]);
-#endif
                 }
               }
               else if (vistaCmd->cbuf[2] == 0x0d)
@@ -1691,11 +1052,7 @@ void vistaECPHome::update()
                 {
                   // relaypublishStatus(vistaCmd->cbuf[1],z,vistaCmd->cbuf[4]?true:false);
                   if (_debug > 0)
-#if defined(ARDUINO_MQTT)
                     Serial.printf("Got relay address %d channel %d = %d. Cmd 0D. Pulsing 1sec on/ 1sec off\n", vistaCmd->cbuf[1], z, vistaCmd->cbuf[4]);
-#else
-              ESP_LOGD(TAG, "Got relay address %d channel %d = %d. Cmd 0D. Pulsing 1sec on/ 1sec off", vistaCmd->cbuf[1], z, vistaCmd->cbuf[4]);
-#endif
                 }
               }
               else if (vistaCmd->cbuf[2] == 0xf7)
@@ -1732,11 +1089,7 @@ void vistaECPHome::update()
               sensorObjType *zt = getZoneFromSerial(device_serial);
               if (_debug)
               {
-#if defined(ARDUINO_MQTT)
                 Serial.printf("RFX: %d,%02x\n", device_serial, vistaCmd->cbuf[5]);
-#else
-          ESP_LOGI(TAG, "RFX: %d,%02x, mask=%02x", device_serial, vistaCmd->cbuf[5], zt->loopmask);
-#endif
               }
               if (zt->active && !(vistaCmd->cbuf[5] & 4) && !(vistaCmd->cbuf[5] & 1))
               {
@@ -1770,11 +1123,7 @@ void vistaECPHome::update()
               uint32_t device_serial = (vistaCmd->cbuf[5] << 16) + (vistaCmd->cbuf[6] << 8) + vistaCmd->cbuf[7];
               sensorObjType *zt = getZoneFromSerial(device_serial);
               {
-#if defined(ARDUINO_MQTT)
                 Serial.printf("LOOP: %d,%02x\n", device_serial, vistaCmd->cbuf[5]);
-#else
-          ESP_LOGI(TAG, "LOOP: %d,%02x, mask=%02x", device_serial, vistaCmd->cbuf[3], zt->loopmask);
-#endif
               }
               if (zt->active && !(vistaCmd->cbuf[5] & 4) && !(vistaCmd->cbuf[5] & 1))
               {
@@ -1865,26 +1214,6 @@ void vistaECPHome::update()
               {
                 auiCmd.state = rsidle;
               }
-#if defined(AUTOPOPULATE)
-              
-                //  else if (auiCmd.state == rszonecount) {
-                //     if (m!= NULL)
-                //      auiCmd.records=std::stoi(m);
-                //      if (auiCmd.records > 0) {
-                //        auiCmd.state=rszoneinfo;
-                //        auiCmd.record=1;
-                //      } else
-                //        auiCmd.state=rsidle;
-                //  } else if (auiCmd.state == rszoneinfo) {
-                //    if (m!= NULL) {
-                //     processZoneInfo(m);
-                //     auiCmd.record++;
-                //     if (auiCmd.record > auiCmd.records)
-                //      auiCmd.state=rsidle;
-                //    }
-                //  }
-     
-#endif
             }
             else if (((vistaCmd->cbuf[2] ) & _auiAddrMask) && (vistaCmd->cbuf[7] & 0xf0) == 0x50 && (vistaCmd->cbuf[8] == 0xfd || vistaCmd->cbuf[10] == 0xfd))
             {
@@ -1919,26 +1248,16 @@ void vistaECPHome::update()
             {
               if (_partitions[partition - 1])
               {
-#if defined(ARDUINO_MQTT)
                 Serial.printf("Partition: %02X\n", partition);
-#else
-          ESP_LOGI(TAG, "Partition: %02X", partition);
-#endif
                 updateDisplayLines(partition);
                 publishBeeps(vistaCmd->statusFlags.beeps, partition);
                 if (vistaCmd->statusFlags.systemFlag && strstr(vistaCmd->statusFlags.prompt2, HITSTAR))
                   alarm_keypress_partition("*", partition);
               }
             }
-#if defined(ARDUINO_MQTT)
             Serial.printf("Prompt: %s\n", vistaCmd->statusFlags.prompt1);
             Serial.printf("Prompt: %s\n", vistaCmd->statusFlags.prompt2);
             Serial.printf("Beeps: %d\n", vistaCmd->statusFlags.beeps);
-#else
-            ESP_LOGI(TAG, "Prompt: %s", vistaCmd->statusFlags.prompt1);
-            ESP_LOGI(TAG, "Prompt: %s", vistaCmd->statusFlags.prompt2);
-            ESP_LOGI(TAG, "Beeps: %d", vistaCmd->statusFlags.beeps);
-#endif
           
           }
 
@@ -2303,13 +1622,6 @@ void vistaECPHome::update()
               partitionStates[partition - 1].refreshLights = false;
             }
           }
-#if !defined(ESP32) 
-          if (vista.handle())
-          {
-            dataTime = millis();
-            vista.connected = true;
-          }
-#endif
 
           std::string zoneStatusMsg = "";
           char s1[16];
@@ -2430,13 +1742,6 @@ void vistaECPHome::update()
           forceRefreshGlobal = false;
         }
 
-#if !defined(ESP32) 
-        if (vista.handle())
-        {
-          dataTime = millis();
-          vista.connected = true;
-        }
-#endif
       }
 
       const __FlashStringHelper *vistaECPHome::statusText(int statusCode)
@@ -3119,58 +2424,4 @@ void vistaECPHome::update()
         }
       }
 
-#if defined(AUTOPOPULATE)
 
-      /*
-     void  vistaECPHome::loadZone(int z,std::string &&name) {
-         std::string n=std::to_string(z);
-         std::string type_id="z" + n;
-
-
-         auto it = std::find_if(bMap.begin(), bMap.end(),  [&type_id](binary_sensor::BinarySensor* f){ return f->get_object_id() == type_id; } );
-         if (it != bMap.end()) return;
-       #if defined(TEMPLATE_ALARM)
-         template_alarm_::TemplateBinarySensor * ptr = new template_alarm_::TemplateBinarySensor();
-       #else
-         template_::TemplateBinarySensor * ptr = new template_::TemplateBinarySensor();
-       #endif
-
-         zoneNameType *  nz = new zoneNameType();
-         nz->name = name;
-         nz->type_id=type_id;
-         nz->ptr=ptr;
-         autoZones.push_back(nz);
-         App.register_binary_sensor(ptr);
-
-         ptr->set_name(nz->name.c_str());
-         ptr->set_object_id(nz->type_id.c_str());
-
-     ESP_LOGD(TAG,"get name=%s,get object_id=%s",ptr->get_name().c_str(),ptr->get_object_id().c_str());
-
-        // ptr->set_device_class("window");
-       //  ptr->set_publish_initial_state(true);
-       //  ptr->set_disabled_by_default(false);
-     #if defined(ESPHOME_MQTT)
-         mqtt::MQTTBinarySensorComponent * mqptr=new mqtt::MQTTBinarySensorComponent(ptr);
-         mqptr->set_component_source("mqtt");
-         App.register_component(mqptr);
-         mqptr->call();
-         nz->mqptr=mqptr;
-     #endif
-       #if defined(TEMPLATE_ALARM)
-         ptr->set_component_source("template_alarm.binary_sensor");
-       #else
-         ptr->set_component_source("template.binary_sensor");
-       #endif
-         App.register_component(ptr);
-         ptr->setup();
-         ptr->call();
-         createZone(z);
-     }
-         */
-#endif
-
-#if !defined(ARDUINO_MQTT)
-    }
-  } // namespaces
-#endif

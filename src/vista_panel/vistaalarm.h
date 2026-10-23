@@ -1,58 +1,14 @@
 #pragma once
 
-#include "../vista_build.h"
-
-#if !defined(ARDUINO_MQTT)
-#include "esphome/core/defines.h"
-#include "esphome/core/component.h"
-#include "esphome/core/application.h"
-#include "esphome/core/helpers.h"
-#include "esphome/components/time/real_time_clock.h"
-
-// #if defined(AUTOPOPULATE)
-// #if defined(TEMPLATE_ALARM)
-// #include "esphome/components/template_alarm/binary_sensor/template_binary_sensor.h"
-// #else
-// #include "esphome/components/template/binary_sensor/template_binary_sensor.h"
-// #endif
-// #endif
-
-#if defined(USE_ESP_IDF)
-#define ESP32
-#include <cstring>
-#include <esp_attr.h>
-#include <stdio.h>
-#include <cstdlib>
-#include <string>
-
-typedef char __FlashStringHelper;
-#define PSTR(s)   ((const char *)(s))
-#define FPSTR(pstr_pointer) (reinterpret_cast<const __FlashStringHelper *>(pstr_pointer))
-#define F(string_literal) (FPSTR(PSTR(string_literal)))
-#endif
-
-#if defined(USE_MQTT)
-#define ESPHOME_MQTT
-#include "esphome/components/mqtt/mqtt_client.h"
-#endif
-#if defined(USE_API) || defined(USE_API_SERVICES)
-#include "esphome/components/api/custom_api_device.h"
-#endif
-#endif
-
 #include "../vista_ecp/vista.h"
 #include <string>
 #include <vector>
 #include <queue>
 #include <functional>
-#if defined(ARDUINO_MQTT) && defined(ESP32)
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#endif
 #include "paneltext.h"
 #include "Regexp.h"
-
-// Librería Arduino ESP32. El modo ESPHome no se compila.
 
 #define KP_ADDR 17 // only used as a default if not set in the yaml
 #define MAX_ZONES 48
@@ -95,23 +51,8 @@ typedef char __FlashStringHelper;
 #define TX_PIN 21
 #define MONITOR_PIN 18
 
-#if !defined(ARDUINO_MQTT)
-namespace esphome
-{
-  namespace alarm_panel
-  {
 
-    extern Vista vista;
-#if defined(ESPHOME_MQTT)
-    extern std::function<void(const std::string &, JsonObject)> mqtt_callback;
-    extern const char *setalarmcommandtopic;
-#endif
-
-#endif
-
-#if defined(ARDUINO_MQTT)
 extern Vista vista;
-#endif
 
     enum sysState
     {
@@ -142,19 +83,8 @@ extern Vista vista;
         int mask;
       };
 
-#if defined(ESPHOME_MQTT) && !defined(USE_API)
-    class vistaECPHome : public time::RealTimeClock
-    {
-#elif defined(ARDUINO_MQTT)
 class vistaECPHome
 {
-#elif defined(USE_API)
-class vistaECPHome : public api::CustomAPIDevice, public time::RealTimeClock
-{
-#else
-class vistaECPHome : public time::RealTimeClock
-{
-#endif
 #define FC(s) ((const char*)(s))
 
     public:
@@ -230,17 +160,8 @@ class vistaECPHome : public time::RealTimeClock
       void stop();
 
 
-#if defined(ARDUINO_MQTT)
       void begin();
-#else
-      void setup() override;
-#endif
 
-// float get_loop_priority() const override {
-//   return 800.0f ; 
-// }
-      void set_panel_time();
-      //  void set_panel_time_manual(int year, int month, int day, int hour, int minute, int second, int dow);
       void alarm_disarm(std::string code, int32_t partition);
 
       void alarm_arm_home(int32_t partition);
@@ -267,11 +188,7 @@ class vistaECPHome : public time::RealTimeClock
       void send_cmd_bytes(int32_t addr, std::string hexbytes);
       void setDefaultKpAddr(uint8_t p);
       void set_alarm_state(std::string const &state, std::string code = "", int partition = DEFAULTPARTITION);
-#if defined(ARDUINO_MQTT)
         void loop();
-#else
-        void update() override;
-#endif
      void disconnectVista()
       {
         vista.stop();
@@ -287,14 +204,9 @@ class vistaECPHome : public time::RealTimeClock
         vista.setExpFault(zone, fault);
       }
 
-#if !defined(ARDUINO_MQTT)
-   void createSensorFromObj(void *obj, uint8_t p, uint32_t serial, uint8_t loop, uint8_t type, bool emulated,const char *id_type, bool is_binary);
-  const char * getIdType(uint32_t hash);
-#endif
 
      bool forceRefreshGlobal, forceRefreshZones;
 
-#if defined(ARDUINO_MQTT)
       void setBinarySensorCallback(std::function<void(const std::string &cstr, uint8_t partition, bool open)> callback)
       {
         binarySensorCallback = callback;
@@ -303,14 +215,10 @@ class vistaECPHome : public time::RealTimeClock
       {
         textSensorCallback = callback;
       }
-#endif
 
     private:
       struct sensorObjType
       {
-#if !defined(ARDUINO_MQTT)
-        void * sensorPtr;
-#endif
         uint16_t zone;
         unsigned long time;
         uint8_t partition : 7;
@@ -334,69 +242,25 @@ class vistaECPHome : public time::RealTimeClock
         const char * id_type;
      };
 
-#if defined(ARDUINO_MQTT)
       std::function<void(const std::string &, uint8_t, std::string *)> textSensorCallback;
       std::function<void(const std::string &, uint8_t, bool)> binarySensorCallback;
-#endif
 
       void publishZoneStatus(sensorObjType *zt, const char *open)
       {
         if (zt == NULL)
           return;
-#if defined(ARDUINO_MQTT)
         {
           std::string ztxt(open);
           publishTextState(SZONE, zt->zone, &ztxt);
         }
-#else
-    if (zt->sensorPtr != nullptr && !zt->is_binary && zt->zone) {
-      text_sensor::TextSensor * ts = reinterpret_cast<text_sensor::TextSensor *> (zt->sensorPtr);
-       ts->publish_state(open);
-    }
-   
-#endif
       }
 
          void publishZoneStatus(sensorObjType *zt,bool open)
       {
         if (zt == NULL)
           return;
-#if defined(ARDUINO_MQTT)
         publishBinaryState(SZONE, zt->zone, open);
-#else
-    if (zt->sensorPtr != nullptr && zt->is_binary && zt->zone) {
-       binary_sensor::BinarySensor * bs = reinterpret_cast<binary_sensor::BinarySensor*> (zt->sensorPtr);
-       bs->publish_state(open);
-    }
-   
-#endif
       }
-
-
-//       void publishZoneStatus(sensorObjType *zt, const char *open)
-//       {
-//         if (zt == NULL)
-//           return;
-// #if defined(ARDUINO_MQTT)
-//         publishTextState(SZONE, zt->zone, open);
-// #else
-//       std::string s = open;
-//       if (zt->textsensor != NULL && s != zt->textsensor->state)
-//         zt->textsensor->publish_state(s);
-//    #endif
-//       }
-
-//       void publishZoneStatus(sensorObjType *zt, bool open)
-//       {
-//         if (zt == NULL)
-//           return;
-// #if defined(ARDUINO_MQTT)
-//         publishBinaryState(SZONE, zt->zone, open);
-// #else
-//         if (zt->binarysensor != NULL && open != zt->binarysensor->state)
-//           zt->binarysensor->publish_state(open);
-// #endif
-//       }
 
       void publishStatus(const char *sensor, bool open, uint8_t partition = 0)
       {
@@ -509,42 +373,6 @@ class vistaECPHome : public time::RealTimeClock
       };
 
 
-
-#if defined(AUTOPOPULATE)
-      // struct zoneNameType
-      // {
-      //   std::string name;
-      //   uint8_t zone;
-      //   uint8_t zone_type;
-      //   uint8_t device_type;
-      // };
-#endif
-
-#if !defined(ARDUINO_MQTT)
-      sensorObjType sensorObjType_INIT = {
-          .sensorPtr = NULL,
-          .zone = 0,
-          .time = 0,
-          .partition = 0,
-          .open = 0,
-          .bypass = 0,
-          .alarm = 0,
-          .check = 0,
-          .fire = 0,
-          .panic = 0,
-          .trouble = 0,
-          .lowbat = 0,
-          .active = 0,
-          .serial = 0,
-          .loopmask = 0x80,
-          .type=0,
-          .emulated=0,
-          .is_binary=0,
-          .hash=0,
-          .id_type="",
-
-        };
-#else
       sensorObjType sensorObjType_INIT = {
           .zone = 0,
           .time = 0,
@@ -567,7 +395,6 @@ class vistaECPHome : public time::RealTimeClock
           .id_type="",
 
         };
-#endif
 
       struct
       {
@@ -580,7 +407,6 @@ class vistaECPHome : public time::RealTimeClock
         uint8_t panic2 : 1;
         uint8_t panic3 : 1;
       } otherSup;
-
 
 
       struct alarmStatusType
@@ -655,11 +481,6 @@ class vistaECPHome : public time::RealTimeClock
       char *parseAUIMessage(char *cmd);
       void processZoneList(char *list);
       void sendZoneRequest();
-      //void loadZones();
-      void loadZone(int zone, std::string &&name, uint8_t sensorObjType, uint8_t devicetype);
-      void getZoneCount();
-      void getZoneRecord();
-      void processZoneInfo(char *list);
       void getRFSerial(sensorObjType *zt);
      // void enableModuleAddr(sensorObjType n);
 
@@ -667,23 +488,15 @@ class vistaECPHome : public time::RealTimeClock
 
  
       struct cmdQueueItem * vistaCmd;
-#ifdef ESP32
       TaskHandle_t xHandle{NULL};
       static void cmdQueueTask(void *args);
      // static void setupTask(void *args);
       
-#endif
       void createZone(uint16_t z, uint8_t p = 0);
-      int getZoneNumber(char *zid);
 
       auiCmdType auiCmd;
       std::vector<sensorObjType> extZones{};
       std::queue<auiCmdType> auiQueue{};
-
-#if defined(AUTOPOPULATE)
-      // std::vector<zoneNameType> autoZones{};
-      // void fetchPanelZones();
-#endif
 
 
       sensorObjType *getZone(uint16_t z);
@@ -692,12 +505,6 @@ class vistaECPHome : public time::RealTimeClock
       void zoneStatusUpdate(sensorObjType *zt);
       void assignPartitionToZone(sensorObjType *zt);
 
-#if defined(ESPHOME_MQTT)
-
-      void on_json_message(const std::string &topic, JsonObject payload);
-      static void on_json_message_callback(const std::string &topic, JsonObject payload);
-
-#endif
 
         bool isInt(std::string s, int base);
 
@@ -726,20 +533,7 @@ class vistaECPHome : public time::RealTimeClock
 
         const __FlashStringHelper *statusText(int statusCode);
 
-    #if defined (USE_ESP_IDF)
-static unsigned long millis() {
-     return esp_timer_get_time() / 1000;
- }
- #endif
-
-
 
       };
 
-#if !defined(ARDUINO_MQTT)
-    extern vistaECPHome *alarmPanelPtr;
-    }
-  } // namespaces
-#else
 extern vistaECPHome *alarmPanelPtr;
-#endif

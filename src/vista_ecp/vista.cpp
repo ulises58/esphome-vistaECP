@@ -1,7 +1,5 @@
 #include "vista.h"
 
-// Standalone Arduino (F11VistaLab): no ESPHome — upstream gated this on ARDUINO_MQTT.
-
 Vista *pointerToVistaClass;
 
 void IRAM_ATTR rxISRHandler(void* args)
