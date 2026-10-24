@@ -1406,7 +1406,8 @@ vistaECPHome::~vistaECPHome()
           // zone fault status
           // ESP_LOGD("test","armed status/system,stay,away flag is: %d , %d, %d , %d",vistaCmd->statusFlags.armed,vistaCmd->statusFlags.systemFlag,vistaCmd->statusFlags.armedStay,vistaCmd->statusFlags.armedAway);
           // if (!(vistaCmd->cbuf[7] > 0 || vistaCmd->statusFlags.beeps == 1 || vistaCmd->statusFlags.beeps == 4) && !(vistaCmd->statusFlags.instant || vistaCmd->statusFlags.armedAway || vistaCmd->statusFlags.armedStay || vistaCmd->statusFlags.night))
-          if (!vistaCmd->statusFlags.systemFlag && !vistaCmd->statusFlags.check && !vistaCmd->statusFlags.bypass && !vistaCmd->statusFlags.alarm && !(vistaCmd->statusFlags.instant || vistaCmd->statusFlags.armedAway || vistaCmd->statusFlags.armedStay || vistaCmd->statusFlags.night))
+          // En modo programacion el texto del teclado no es una zona en falla.
+          if (!vistaCmd->statusFlags.systemFlag && !vistaCmd->statusFlags.check && !vistaCmd->statusFlags.bypass && !vistaCmd->statusFlags.alarm && !vistaCmd->statusFlags.programMode && !(vistaCmd->statusFlags.instant || vistaCmd->statusFlags.armedAway || vistaCmd->statusFlags.armedStay || vistaCmd->statusFlags.night))
           {
             if (vistaCmd->cbuf[5] > 0x90)
               getZoneFromPrompt(vistaCmd->statusFlags.prompt1);
@@ -1595,16 +1596,18 @@ vistaECPHome::~vistaECPHome()
 
               if (vistaCmd->statusFlags.systemFlag || updateSystemState)
               {
-                if (currentLightState.away != previousLightState.away || _forceRefresh)
+                lightStates &pub = partitionStates[partition - 1].publishedArmed;
+                if (currentLightState.away != pub.away || _forceRefresh)
                   publishStatus(SARMEDAWAY, currentLightState.away, partition);
-                if (currentLightState.stay != previousLightState.stay || _forceRefresh)
+                if (currentLightState.stay != pub.stay || _forceRefresh)
                   publishStatus(SARMEDSTAY, currentLightState.stay, partition);
-                if (currentLightState.night != previousLightState.night || _forceRefresh)
+                if (currentLightState.night != pub.night || _forceRefresh)
                   publishStatus(SARMEDNIGHT, currentLightState.night, partition);
-                if (currentLightState.instant != previousLightState.instant || _forceRefresh)
+                if (currentLightState.instant != pub.instant || _forceRefresh)
                   publishStatus(SINSTANT, currentLightState.instant, partition);
-                if (currentLightState.armed != previousLightState.armed || _forceRefresh)
+                if (currentLightState.armed != pub.armed || _forceRefresh)
                   publishStatus(SARMED, currentLightState.armed, partition);
+                pub = currentLightState;
               }
 
               if (currentLightState.bypass != previousLightState.bypass || _forceRefresh || updateSystemState)

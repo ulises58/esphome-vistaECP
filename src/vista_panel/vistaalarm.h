@@ -462,6 +462,9 @@ class vistaECPHome
       {
         sysState previousSystemState;
         lightStates previousLightState;
+        // Armado publicado por ultima vez. previousLightState avanza en cada mensaje,
+        // pero el armado solo se publica con systemFlag: hay que comparar contra lo publicado.
+        lightStates publishedArmed;
         int lastbeeps;
         bool refreshStatus;
         bool refreshLights;
@@ -471,6 +474,7 @@ class vistaECPHome
      partitionStateType partitionStates_INIT = {
           .previousSystemState= sunavailable,
           .previousLightState={0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+          .publishedArmed={0,0,0,0,0,0,0,0,0,0,0,0,0,0},
           .lastbeeps=0,
           .refreshStatus=false,
           .refreshLights=false,

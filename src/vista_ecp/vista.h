@@ -198,6 +198,13 @@ public:
 
 
     bool lrrSupervisor;
+
+    // Diagnostico del serial por software. Solo suben; el sketch los lee y compara.
+    volatile uint32_t panelChksumFails = 0;   // Mensajes del panel (amarillo) con checksum malo
+    volatile uint32_t monitorChksumFails = 0; // Mensajes del verde (monitor) con checksum malo
+    volatile uint32_t rxOverflows = 0;        // Se lleno el buffer de cambios del amarillo: se perdieron bits
+    volatile uint32_t monitorOverflows = 0;   // Lo mismo en el verde
+
     void setExpFault(int, bool);
     void setRFFault(uint8_t fault,uint32_t serial);
     bool charAvail();
@@ -269,6 +276,7 @@ private:
     void writeChars();
     void readChars(int, char *, int *);
     bool validChksum(char *, int, int);
+    bool panelChksumOk(char *, int, int);
     void readChar(char *, int *);
     void onLrr(char *, int *);
     void onExp(char *);

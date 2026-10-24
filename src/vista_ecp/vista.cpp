@@ -781,8 +781,11 @@ void Vista::write(const char key, uint8_t addr)
     kt.direct = false;
     kt.count = 0;
     kt.seq = 0;
+    uint8_t next = (_inbufIdx + 1) % CMDBUFSIZE;
+    if (next == _outbufIdx)
+      return; // Cola llena: si avanza, alcanza a _outbufIdx, parece vacia y se pierden todas las teclas.
     _outbuf[_inbufIdx] = kt;
-    _inbufIdx = (_inbufIdx + 1) % CMDBUFSIZE;
+    _inbufIdx = next;
   }
 }
 
@@ -797,8 +800,11 @@ void Vista::writeDirect(const char key, uint8_t addr, uint8_t seq)
   kt.direct = true;
   kt.count = 0;
   kt.seq = seq;
+  uint8_t next = (_inbufIdx + 1) % CMDBUFSIZE;
+  if (next == _outbufIdx)
+    return; // Cola llena, igual que en write().
   _outbuf[_inbufIdx] = kt;
-  _inbufIdx = (_inbufIdx + 1) % CMDBUFSIZE;
+  _inbufIdx = next;
 }
 
 void Vista::write(const char key)
@@ -1049,6 +1055,12 @@ void Vista::writeChars()
 //  }
  
 
+// micros() de Arduino no esta en IRAM (CONFIG_ARDUINO_ISR_IRAM=n). esp_timer_get_time() si lo esta.
+static inline unsigned long IRAM_ATTR isrMicros()
+{
+  return (unsigned long)esp_timer_get_time();
+}
+
 void IRAM_ATTR Vista::rxHandleISR()
 {
   disableInterrupts();
@@ -1056,16 +1068,16 @@ void IRAM_ATTR Vista::rxHandleISR()
   static uint8_t ackAddr;
   static uint8_t ackCount=0;
     #if defined(USE_ESP_IDF) or defined(ESP32)
-  bool level=gpio_get_level((gpio_num_t) _rxPin);
+  bool level = gpio_ll_get_level(&GPIO, _rxPin);  // gpio_get_level() vive en flash
   #else
   bool level=digitalRead(_rxPin);
   #endif
     if ( level == _invertRead)
   {
     if (_lowTime)
-     _lowTime = micros() - _lowTime;
+     _lowTime = isrMicros() - _lowTime;
 
-    _highTime = micros();
+    _highTime = isrMicros();
 
 
     if (_lowTime > 9000)
@@ -1142,14 +1154,14 @@ void IRAM_ATTR Vista::rxHandleISR()
   else
   {
 
-    if (_highTime && micros() - _highTime > 6000 && _rxState == sNormal) {
+    if (_highTime && isrMicros() - _highTime > 6000 && _rxState == sNormal) {
 
       _rxState = sPolling;
     }
     if (_rxState == sCmdHigh) // end 2400 baud cmd preamble
       _rxState = sNormal;
 
-    _lowTime = micros();
+    _lowTime = isrMicros();
 
     _highTime = 0;
   }
@@ -1172,6 +1184,15 @@ void IRAM_ATTR Vista::txHandleISR()
   restoreInterrupts();
 }
 #endif
+
+// Igual que validChksum, pero cuenta los mensajes del panel (amarillo) que llegan mal.
+bool Vista::panelChksumOk(char cbuf[], int start, int len)
+{
+  if (validChksum(cbuf, start, len))
+    return true;
+  panelChksumFails++;
+  return false;
+}
 
 bool Vista::validChksum(char cbuf[], int start, int len)
 {
@@ -1205,6 +1226,7 @@ size_t Vista::decodePacket()
 
     if (!validChksum(_extbuf, 0, 5))
     {
+      monitorChksumFails++;
       _extcmd[0] = _extbuf[0];
       _extcmd[1] = _extbuf[1];
       _extcmd[2] = _extbuf[2];
@@ -1479,6 +1501,8 @@ bool Vista::handle()
 #ifdef MONITORTX
   if (vistaSerialMonitor != NULL)
   {
+    if (vistaSerialMonitor->overflow())
+      monitorOverflows++;
     if (getExtBytes())
       return true;
   }
@@ -1486,6 +1510,8 @@ bool Vista::handle()
 
   if (vistaSerial == NULL)
     return false;
+  if (vistaSerial->overflow())
+    rxOverflows++;
 
   if (_is2400)
     vistaSerial->setBaud(2400);
@@ -1558,7 +1584,7 @@ bool Vista::handle()
       memset(_extcmd, 0, OUTBUFSIZE); // store the previous panel sent data in _extcmd buffer for later use
       memcpy(_extcmd, _cbuf, 7);
       #endif
-      if (!validChksum(_cbuf, 0, gidx))
+      if (!panelChksumOk(_cbuf, 0, gidx))
         _cbuf[12] = 0x77;
       else
       {
@@ -1578,7 +1604,7 @@ bool Vista::handle()
       _cbuf[gidx++] = x;
       readChars(F7_MESSAGE_LENGTH - 1, _cbuf, &gidx);
 
-      if (!validChksum(_cbuf, 0, gidx) )
+      if (!panelChksumOk(_cbuf, 0, gidx))
         _cbuf[12] = 0x77;
       else
       {
@@ -1608,7 +1634,7 @@ bool Vista::handle()
       else
       {
         readChars(_cbuf[2], _cbuf, &gidx);
-        if (!validChksum(_cbuf, 0, gidx))
+        if (!panelChksumOk(_cbuf, 0, gidx))
           _cbuf[12] = 0x77;
         else
         {
@@ -1658,7 +1684,7 @@ bool Vista::handle()
       _cbuf[gidx++] = x;
       readChars(1, _cbuf, &gidx); // len
       readChars(_cbuf[1], _cbuf, &gidx);
-      if (!validChksum(_cbuf, 0, gidx))
+      if (!panelChksumOk(_cbuf, 0, gidx))
         _cbuf[12] = 0x77;
       else
       {
@@ -1677,7 +1703,7 @@ bool Vista::handle()
       readChars(1, _cbuf, &gidx);       // header byte
       readChars(1, _cbuf, &gidx);       // len byte
       readChars(_cbuf[2], _cbuf, &gidx); // read len bytes
-      if (!validChksum(_cbuf, 0, gidx))
+      if (!panelChksumOk(_cbuf, 0, gidx))
         _cbuf[12] = 0x77;
       else
         _newCmd = true;
@@ -1707,7 +1733,7 @@ bool Vista::handle()
       gidx = 0;
       _cbuf[gidx++] = x;
       readChars(4, _cbuf, &gidx);
-      if (!validChksum(_cbuf, 0, gidx))
+      if (!panelChksumOk(_cbuf, 0, gidx))
         _cbuf[12] = 0x77;
       else
         _newCmd = true;
@@ -1820,7 +1846,9 @@ void Vista::begin(int receivePin, int transmitPin, char keypadAddr, int monitorT
   {
     vistaSerial->begin(4800, SWSERIAL_8E2);
       #if defined (USE_ESP_IDF)  or defined(ESP32)
-       gpio_install_isr_service(0);
+       // IRAM: la interrupcion sigue corriendo mientras se escribe la flash. Si otro codigo ya
+       // instalo el servicio sin esta bandera, esta llamada no hace nada y se queda como estaba.
+       gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
        gpio_set_intr_type((gpio_num_t)_rxPin, GPIO_INTR_ANYEDGE);
        gpio_isr_handler_add((gpio_num_t)_rxPin, rxISRHandler, this);
         #else

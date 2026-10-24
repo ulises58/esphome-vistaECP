@@ -34,6 +34,7 @@ Modified for 4800 8E2
 #define ESP32
 #include <cstring>
 #include "driver/gpio.h"
+#include "hal/gpio_ll.h"
 #include "driver/gptimer.h"
 #include <esp_attr.h>
 #include <stdio.h>
@@ -212,7 +213,8 @@ private:
 
 void IRAM_ATTR digitalWritePin(int pin, int val) {
     #if defined(USE_ESP_IDF) or defined(ESP32)
-        gpio_set_level((gpio_num_t)pin, val);
+        // gpio_set_level() vive en flash (CONFIG_GPIO_CTRL_FUNC_IN_IRAM=n): se escribe el registro directo.
+        gpio_ll_set_level(&GPIO, pin, val);
     #else
         digitalWrite(pin,val);
     #endif

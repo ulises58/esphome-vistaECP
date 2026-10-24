@@ -100,8 +100,23 @@ void setup() {
   Serial.println(F("VistaECP listo. Escribe help."));
 }
 
+// Cada minuto, si cambiaron, los contadores del serial por software. Si suben con la red
+// cargada, hay interrupciones del bus que llegan tarde.
+static void printBusStats() {
+  static uint32_t last = 0;
+  static uint32_t seen[4] = {0, 0, 0, 0};
+  if (millis() - last < 60000) return;
+  last = millis();
+  uint32_t now[4] = {vista.panelChksumFails, vista.monitorChksumFails, vista.rxOverflows, vista.monitorOverflows};
+  if (memcmp(now, seen, sizeof(now)) == 0) return;
+  memcpy(seen, now, sizeof(now));
+  Serial.printf("[bus] checksum panel=%lu monitor=%lu, overflow rx=%lu monitor=%lu\n",
+                (unsigned long)now[0], (unsigned long)now[1], (unsigned long)now[2], (unsigned long)now[3]);
+}
+
 void loop() {
   panel.loop();
+  printBusStats();
 
   while (Serial.available()) {
     char c = (char)Serial.read();

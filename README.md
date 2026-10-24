@@ -8,6 +8,7 @@ This fork keeps Dilbert66's ECP library and ships it as an Arduino library for t
   * [Table of contents](#table-of-contents)
   * [About the project](#about-the-project)
   * [Features](#features)
+  * [Changes in this fork](#changes-in-this-fork)
 - [How to install](#how-to-install)
   * [⚠️ Warning!!! ⚠️](#⚠️-warning-⚠️)
   * [Prerequisites](#prerequisites)
@@ -51,6 +52,42 @@ For multi partition support, it is important that you first program new keypad a
 * If you use the zone expanders and/or LRR functions, you might need to clear CHECK messages for the LRR and expanded zones from the panel on boot or restart by entering your access code followed by 1 twice. eg 12341 12341 where 1234 is your access code.
 
 **Read more in the next wiki paragraphs for a detailed step by step guide.**
+
+## Changes in this fork
+
+Everything below is on top of Dilbert66's library. The bus is still read and written with the software serial (`ECPSoftwareSerial`), as in the original.
+
+### Packaging
+
+- Arduino library for the ESP32 only. ESPHome, the Home Assistant card, the MQTT examples and the ESP8266 build were removed.
+- Pins, inversions, zones and partitions are passed to the `vistaECPHome` constructor from your sketch. The defaults (`RX_PIN 22`, `TX_PIN 21`, `MONITOR_PIN 18`) are only the original project's example pins; check them against your board.
+
+### Fixes
+
+- **Armed sensors stayed on after disarming.** When a disarm left the panel not ready, the armed sensors (`arm`, `arma`, `arms`, `armn`, `armi`) are only published on frames with `systemFlag`, but `previousLightState` was updated on every frame. The next system frame then saw no change and the sensors stayed `true`. They are now compared against the value last published (`publishedArmed` in `partitionStateType`). Same fix as [pletch/esphome-vistaECP-idf](https://github.com/pletch/esphome-vistaECP-idf) commit `eab81b9` (issue #5 there).
+- **Zone faults during programming mode.** The keypad text in installer mode was parsed as faulted zones. The zone fault check now skips `programMode`. Same fix as pletch commit `affb02a`.
+- **Key queue overflow.** `write()` and `writeDirect()` did not check if the 50-entry key queue was full. With more than 49 pending keys the index wrapped onto the read index, the queue looked empty and every pending key was lost. A key that does not fit is now dropped and the queued ones are kept.
+
+### Software serial reliability
+
+The library times each edge of the yellow (and green) line from a GPIO interrupt. A byte is lost or corrupted when that interrupt runs late.
+
+- **The interrupt path no longer calls code in flash.** `gpio_get_level()` and `gpio_set_level()` live in flash in ESP-IDF unless `CONFIG_GPIO_CTRL_FUNC_IN_IRAM` is set (it is not by default), and Arduino's `micros()` is not in IRAM either (`CONFIG_ARDUINO_ISR_IRAM=n`). The interrupt now reads and writes the pin registers directly (`gpio_ll_get_level`, `gpio_ll_set_level`) and uses `esp_timer_get_time()`, which is in IRAM.
+- **The GPIO interrupt service is installed with `ESP_INTR_FLAG_IRAM`**, so the bus interrupt keeps running while the flash is being written (for example, saving settings to NVS). If your sketch calls `attachInterrupt()` before `panel.begin()`, Arduino installs the service first without that flag; the library then keeps working, but the bus interrupt pauses during flash writes. Call `panel.begin()` first.
+- **Error counters**, public members of the global `vista` object. They only go up:
+
+  | Counter | Counts |
+  |---------|--------|
+  | `vista.panelChksumFails` | Panel (yellow) messages with a bad checksum |
+  | `vista.monitorChksumFails` | Green-line (monitor) messages with a bad checksum |
+  | `vista.rxOverflows` | Times the yellow edge buffer filled up (bits lost) |
+  | `vista.monitorOverflows` | Same for the green line |
+
+  The example sketch prints them every minute when they change. Load the network (MQTT, web page, Wi-Fi traffic) and watch them: if they stay at zero or close to it, the software serial is keeping up.
+
+- **Keep the network off the bus core.** The library runs its task and its interrupts on core 1 (`ASYNC_CORE` in `vistaalarm.h`). Wi-Fi and the TCP stack already run on core 0. If your sketch does slow network work, run it in a task on core 0 so core 1 stays free for the bus.
+
+If the counters still climb after this, the next step is a hardware UART for the yellow line, as pletch's fork does. That is a rewrite of the receive path (address pulses and 2400 baud segments have to be detected differently), not a patch.
 
 ## Features
 

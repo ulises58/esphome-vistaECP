@@ -644,7 +644,7 @@ void SoftwareSerial::rxBits()
 void IRAM_ATTR SoftwareSerial::rxRead()
 {
     #if defined(USE_ESP_IDF) or defined(ESP32)
-    bool level= gpio_get_level((gpio_num_t)m_rxPin);
+    bool level = gpio_ll_get_level(&GPIO, m_rxPin);  // gpio_get_level() vive en flash
     #else
     bool level = digitalRead(m_rxPin);
     #endif
