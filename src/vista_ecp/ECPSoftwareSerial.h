@@ -34,7 +34,6 @@ Modified for 4800 8E2
 #define ESP32
 #include <cstring>
 #include "driver/gpio.h"
-#include "hal/gpio_ll.h"
 #include "driver/gptimer.h"
 #include <esp_attr.h>
 #include <stdio.h>
@@ -59,6 +58,10 @@ typedef char byte;
 
 #include <functional>
 #include <atomic>
+
+#if defined(ESP32) || defined(USE_ESP_IDF)
+#include "hal/gpio_ll.h"  // Lectura y escritura de pines desde la interrupcion, en IRAM
+#endif
 
 #if defined(USE_RP2040) && not defined(IRAM_ATTR)
 #define IRAM_ATTR
